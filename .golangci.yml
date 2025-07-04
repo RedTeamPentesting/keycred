@@ -74,6 +74,9 @@ linters:
     - wsl
     - zerologlint
   settings:
+    lll:
+      line-length: 130
+      tab-width: 4
     cyclop:
       max-complexity: 20
     exhaustive:
@@ -101,10 +104,14 @@ linters:
 formatters:
   enable:
     - gofmt
+    - golines
     - goimports
+  settings:
+    golines:
+      max-len: 130
+      tab-len: 4
   exclusions:
     generated: lax
     paths:
       - third_party$
       - builtin$
-      - examples$
