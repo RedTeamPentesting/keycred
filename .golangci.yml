@@ -71,8 +71,9 @@ linters:
     - usetesting
     - wastedassign
     - whitespace
-    - wsl
+    - wsl_v5
     - zerologlint
+    - noinlineerr
   settings:
     lll:
       line-length: 130
