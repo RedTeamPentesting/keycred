@@ -116,6 +116,11 @@ func (keyIDEntry *KeyIDEntry) String() string {
 }
 
 func (keyIDEntry *KeyIDEntry) Matches(material KeyCredentialLinkEntry) bool {
+	jwkme, ok := material.(*JSONWebKeyMaterialEntry)
+	if ok {
+		return bytes.Equal(keyIDEntry.RawValue(), jwkme.JSON.KeyID)
+	}
+
 	materialID, err := NewKeyIDEntry(material, Version2)
 	if err != nil {
 		return false
@@ -134,9 +139,16 @@ func (keyIDEntry *KeyIDEntry) MatchesString(keyID string) bool {
 }
 
 func NewKeyIDEntry(keyMaterial KeyCredentialLinkEntry, _ Version) (*KeyIDEntry, error) {
-	switch keyMaterial.(type) {
-	case *KeyMaterialEntry:
-	case *FIDOKeyMaterialEntry:
+	switch km := keyMaterial.(type) {
+	case *JSONWebKeyMaterialEntry:
+		return &KeyIDEntry{
+			RawEntry: &RawEntry{
+				Length:     uint16(len(km.JSON.KeyID)),
+				Identifier: TypeKeyID,
+				Value:      km.JSON.KeyID,
+			},
+		}, nil
+	case *KeyMaterialEntry, *FIDOKeyMaterialEntry:
 		// According to
 		// https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/a99409ea-4982-4f72-b7ef-8596013a36c7
 		// the key ID should be the SHA256 hash of the Value field of the
@@ -144,23 +156,22 @@ func NewKeyIDEntry(keyMaterial KeyCredentialLinkEntry, _ Version) (*KeyIDEntry, 
 		// material, but for FIDO keys this does not seem to match. We do it
 		// according to spec anyway, until we find out how the key ID is
 		// supposed to differ for FIDO keys.
+		sha256Hash := sha256.New()
+		sha256Hash.Write(keyMaterial.RawValue())
+		rawKeyID := sha256Hash.Sum(nil)
+
+		keyIDEntry := &KeyIDEntry{
+			RawEntry: &RawEntry{
+				Length:     uint16(len(rawKeyID)),
+				Identifier: TypeKeyID,
+				Value:      rawKeyID,
+			},
+		}
+
+		return keyIDEntry, nil
 	default:
 		return nil, fmt.Errorf("%T is not key material", keyMaterial)
 	}
-
-	sha256Hash := sha256.New()
-	sha256Hash.Write(keyMaterial.RawValue())
-	rawKeyID := sha256Hash.Sum(nil)
-
-	keyIDEntry := &KeyIDEntry{
-		RawEntry: &RawEntry{
-			Length:     uint16(len(rawKeyID)),
-			Identifier: TypeKeyID,
-			Value:      rawKeyID,
-		},
-	}
-
-	return keyIDEntry, nil
 }
 
 func AsKeyIDEntry(entry *RawEntry, version Version) (*KeyIDEntry, error) {
@@ -205,6 +216,38 @@ func AsKeyHashEntry(entry *RawEntry, _ Version) (*KeyHashEntry, error) {
 	}
 
 	return &KeyHashEntry{RawEntry: entry}, nil
+}
+
+func AsAppropriateKeyMaterialEntry(entry *RawEntry, version Version) (KeyCredentialLinkEntry, error) {
+	testContent := struct {
+		AuthData []byte   `json:"authData"`
+		X5C      [][]byte `json:"x5c"`
+
+		KeyType string `json:"kty"`
+		KeyID   string `json:"kid"`
+	}{}
+
+	rawValue := entry.RawValue()
+	switch {
+	case len(rawValue) == 0:
+		return nil, fmt.Errorf("data is empty")
+	case rawValue[0] == '{':
+		err := json.Unmarshal(rawValue, &testContent)
+		if err != nil {
+			return nil, fmt.Errorf("key material seems to be JSON encoded but it cannot be decode: %w", err)
+		}
+
+		switch {
+		case len(testContent.AuthData) > 0 || len(testContent.X5C) > 0:
+			return AsFIDOKeyMaterialEntry(entry, version)
+		case testContent.KeyID != "" || testContent.KeyType != "":
+			return AsJSONWebKeyMaterialEntry(entry, version)
+		default:
+			return nil, fmt.Errorf("JSON key material seems to be neither FIDO nor JSON Web Key")
+		}
+	default:
+		return AsKeyMaterialEntry(entry, version)
+	}
 }
 
 const (
@@ -253,6 +296,34 @@ func (km *KeyMaterialEntry) String() string {
 
 func (km *KeyMaterialEntry) DetailedString() string {
 	return km.String() + fmt.Sprintf(" (E=%d, N=0x%x)", km.key.E, km.key.N)
+}
+
+type JSONWebKeyMaterialEntry struct {
+	*RawEntry
+	JSON struct {
+		KeyType string `json:"kty"`
+		Curve   string `json:"crv"`
+		X       string `json:"x"`
+		Y       string `json:"y"`
+		KeyID   []byte `json:"kid"`
+	}
+}
+
+func (jwkme *JSONWebKeyMaterialEntry) String() string {
+	return fmt.Sprintf("JSONWebKeyMaterial: %s", string(jwkme.RawValue()))
+}
+
+func AsJSONWebKeyMaterialEntry(entry *RawEntry, _ Version) (*JSONWebKeyMaterialEntry, error) {
+	jwkme := &JSONWebKeyMaterialEntry{
+		RawEntry: entry,
+	}
+
+	err := json.Unmarshal(entry.RawValue(), &jwkme.JSON)
+	if err != nil {
+		return nil, fmt.Errorf("JSON parse: %w", err)
+	}
+
+	return jwkme, nil
 }
 
 type FIDOKeyMaterialEntry struct {
@@ -318,11 +389,17 @@ func AsFIDOKeyMaterialEntry(entry *RawEntry, _ Version) (*FIDOKeyMaterialEntry, 
 
 	for i, certBytes := range kme.JSON.X5C {
 		cert, err := x509.ParseCertificate(certBytes)
-		if err != nil {
-			return nil, fmt.Errorf("parse X5C certificate at index %d: %w", i, err)
-		}
 
-		kme.Certificates = append(kme.Certificates, cert)
+		// The first certificate should be the attestation certificate, and the
+		// following certificates should be the chain. All of them *should* be
+		// x509 certs but in practice they sometimes seem to be something else,
+		// parsing errors in the chain will be ignored.
+		switch {
+		case err != nil && i == 0:
+			return nil, fmt.Errorf("parse X5C certificate at index %d: %w", i, err)
+		case err == nil:
+			kme.Certificates = append(kme.Certificates, cert)
+		}
 	}
 
 	kme.authenticatorData, err = parseFIDOAuthData(kme.JSON.AuthData)
