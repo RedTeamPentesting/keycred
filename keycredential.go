@@ -264,10 +264,12 @@ func (kcl *KeyCredentialLink) validate(strict bool) error {
 			}
 		case *KeyIDEntry:
 			switch km := kcl.Get(TypeKeyMaterial).(type) {
-			case *KeyMaterialEntry, *FIDOKeyMaterialEntry, *JSONWebKeyMaterialEntry, *UnparsableEntry:
+			case *KeyMaterialEntry, *JSONWebKeyMaterialEntry, *UnparsableEntry:
 				if !e.Matches(km) {
 					validationErrors = append(validationErrors, fmt.Errorf("key ID does not match key material"))
 				}
+			case *FIDOKeyMaterialEntry:
+				validationErrors = append(validationErrors, fmt.Errorf("validation of FIDO key material ID is not supported"))
 			default:
 				validationErrors = append(validationErrors, fmt.Errorf("cannot find key material to verify key ID"))
 			}

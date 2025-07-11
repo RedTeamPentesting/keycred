@@ -334,7 +334,13 @@ type FIDOKeyMaterialEntry struct {
 		X5C         [][]byte `json:"x5c"`
 		DisplayName string   `json:"displayName"`
 	}
-	DisplayName  string
+	DisplayName string
+	// Certificates holds the certificates from the x5c JSON field. The first
+	// certificate is expected to be the attestation certificate and the rest
+	// are the certificate chain which may not consist of actual x509
+	// certificates. In this case, the corresponding entry in this slice is nil
+	// and the raw data can be retrieved from the x5c JSON
+	// field at the same index.
 	Certificates []*x509.Certificate
 	// This field is currently not exported because the decoding is not
 	// implemented completely. The raw binary authenticator data can be accesses
@@ -345,9 +351,13 @@ type FIDOKeyMaterialEntry struct {
 func (fkm *FIDOKeyMaterialEntry) String() string {
 	certStrs := make([]string, 0, len(fkm.Certificates))
 
-	for _, cert := range fkm.Certificates {
-		certStrs = append(certStrs,
-			fmt.Sprintf("{Subject:%s, Issuer=%s}", cert.Subject.CommonName, cert.Issuer.CommonName))
+	for i, cert := range fkm.Certificates {
+		if cert == nil && i <= len(fkm.JSON.X5C) {
+			certStrs = append(certStrs, base64.StdEncoding.EncodeToString(fkm.JSON.X5C[i]))
+		} else {
+			certStrs = append(certStrs,
+				fmt.Sprintf("{Subject:%s, Issuer=%s}", cert.Subject.CommonName, cert.Issuer.CommonName))
+		}
 	}
 
 	var flags []string
@@ -399,6 +409,8 @@ func AsFIDOKeyMaterialEntry(entry *RawEntry, _ Version) (*FIDOKeyMaterialEntry, 
 			return nil, fmt.Errorf("parse X5C certificate at index %d: %w", i, err)
 		case err == nil:
 			kme.Certificates = append(kme.Certificates, cert)
+		default:
+			kme.Certificates = append(kme.Certificates, nil)
 		}
 	}
 
