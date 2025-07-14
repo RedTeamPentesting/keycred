@@ -78,6 +78,10 @@ type attestedCredentialData struct {
 //nolint:gocyclo
 func humanReadableAADGUI(aadgui uuid.UUID) string {
 	switch strings.ToLower(aadgui.String()) {
+	case "de1e552d-db1d-4423-a619-566b625cdc84":
+		return "Microsoft Authenticator for Android"
+	case "90a3ccdf-635c-4729-a248-9b709135078f":
+		return "Microsoft Authenticator for iOS"
 	case "fcb1bcb4-f370-078c-6993-bc24d0ae3fbe":
 		return "Ledger Nano X FIDO2 Authenticator"
 	case "ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4":
