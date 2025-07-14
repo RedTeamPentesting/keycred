@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -678,6 +679,10 @@ func (lastLogon *KeyApproximateLastLogonTimeStampEntry) Time() time.Time {
 }
 
 func (lastLogon *KeyApproximateLastLogonTimeStampEntry) String() string {
+	if lastLogon.time.IsZero() {
+		return "KeyCreationTime: <empty>"
+	}
+
 	return "KeyApproximateLastLogonTimeStamp: " + lastLogon.time.Format("2006-01-02 15:04:05 MST")
 }
 
@@ -703,7 +708,7 @@ func AsKeyApproximateLastLogonTimeStampEntry(
 
 	lastLogon := &KeyApproximateLastLogonTimeStampEntry{
 		RawEntry: entry,
-		time:     TimeFromFileTime(binary.LittleEndian.Uint64(entry.RawValue())),
+		time:     interpretTime(binary.LittleEndian.Uint64(entry.RawValue())),
 	}
 
 	return lastLogon, nil
@@ -719,6 +724,10 @@ func (creationTime *KeyCreationTimeEntry) Time() time.Time {
 }
 
 func (creationTime *KeyCreationTimeEntry) String() string {
+	if creationTime.time.IsZero() {
+		return "KeyCreationTime: <empty>"
+	}
+
 	return "KeyCreationTime: " + creationTime.time.Format("2006-01-02 15:04:05 MST")
 }
 
@@ -742,7 +751,7 @@ func AsKeyCreationTimeEntry(entry *RawEntry, _ Version) (*KeyCreationTimeEntry, 
 
 	lastLogon := &KeyCreationTimeEntry{
 		RawEntry: entry,
-		time:     TimeFromFileTime(binary.LittleEndian.Uint64(entry.RawValue())),
+		time:     interpretTime(binary.LittleEndian.Uint64(entry.RawValue())),
 	}
 
 	return lastLogon, nil
@@ -765,4 +774,44 @@ func NewUnparsableEntry(entry *RawEntry, err error) *UnparsableEntry {
 		RawEntry: entry,
 		parseErr: err,
 	}
+}
+
+func interpretTime(value uint64) time.Time {
+	if value == 0 {
+		return time.Time{}
+	}
+
+	fileTime := TimeFromFileTime(value)
+
+	// if the year looks plausible as FileTime, interpret it as FileTime
+	if fileTime.Year() > 1900 {
+		return fileTime
+	}
+
+	// Interpret the time as C# DateTime instead:
+	// https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nrbf/f05212bd-57f4-4c4b-9d98-b84c7c658054
+
+	ticks := int64(value) & 0x3FFFFFFFFFFFFFFF         // split of timezone flag
+	seconds := int64(float64(ticks) / math.Pow(10, 7)) // convert from 100ns ticks to seconds
+
+	// work around the fact that the maximum time.Duration is way too short for
+	// this calulation, so we add the maximum duration as often as we need
+
+	var (
+		d                         = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+		maxDuration time.Duration = 1<<63 - 1
+		maxSeconds                = int64(math.Floor(float64(maxDuration) / float64(time.Second)))
+	)
+
+	for seconds > 0 {
+		if seconds > maxSeconds {
+			d = d.Add(time.Duration(maxSeconds) * time.Second)
+			seconds -= maxSeconds
+		} else {
+			d = d.Add(time.Duration(seconds) * time.Second)
+			seconds = 0
+		}
+	}
+
+	return d
 }
