@@ -1,9 +1,11 @@
 module github.com/RedTeamPentesting/keycred
 
-go 1.23.3
+go 1.24.1
+
+toolchain go1.24.4
 
 require (
-	github.com/RedTeamPentesting/adauth v0.4.0
+	github.com/RedTeamPentesting/adauth v0.4.1
 	github.com/go-ldap/ldap/v3 v3.4.11
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.9.1
@@ -12,7 +14,7 @@ require (
 
 require (
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
-	github.com/geoffgarside/ber v1.1.0 // indirect
+	github.com/geoffgarside/ber v1.2.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -25,14 +27,14 @@ require (
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/oiweiwei/go-msrpc v1.2.5 // indirect
+	github.com/oiweiwei/go-msrpc v1.2.7-0.20250716065032-97b0f22c3001 // indirect
 	github.com/oiweiwei/go-smb2.fork v1.0.0 // indirect
-	github.com/oiweiwei/gokrb5.fork/v9 v9.0.2 // indirect
+	github.com/oiweiwei/gokrb5.fork/v9 v9.0.4 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/vadimi/go-ntlm v1.2.1 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
+	golang.org/x/net v0.42.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 )
