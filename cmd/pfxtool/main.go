@@ -7,6 +7,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -18,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RedTeamPentesting/adauth/othername"
+	"github.com/RedTeamPentesting/adauth/x509ext"
 	"github.com/spf13/cobra"
 	"software.sslmate.com/src/go-pkcs12"
 )
@@ -112,6 +113,8 @@ func run() error {
 
 	rootCmd.AddCommand(encryptCmd)
 
+	var verbose bool
+
 	inspectCmd := &cobra.Command{
 		Use:           "inspect <store.pfx>",
 		Short:         "Inspect the contents of a PFX",
@@ -119,15 +122,19 @@ func run() error {
 		SilenceUsage:  true,
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return inspect(args[0], password)
+			return inspect(args[0], password, verbose)
 		},
 	}
+
+	inspectFlags := inspectCmd.PersistentFlags()
+	inspectFlags.BoolVarP(&verbose, "verbose", "v", verbose, "Enable verbose output")
 
 	rootCmd.AddCommand(inspectCmd)
 
 	var (
 		subjectCN        string
 		upn              string
+		sid              string
 		keySize          int
 		validity         time.Duration
 		keyUsage         int
@@ -150,7 +157,7 @@ func run() error {
 				ekus = append(ekus, x509.ExtKeyUsage(eku))
 			}
 
-			err := create(subjectCN, upn, x509.KeyUsage(keyUsage), ekus, validity,
+			err := create(subjectCN, upn, sid, x509.KeyUsage(keyUsage), ekus, validity,
 				keySize, pfxFile, password, force)
 			if err != nil {
 				return err
@@ -158,13 +165,14 @@ func run() error {
 
 			fmt.Printf("Created PFX: %s\n\n", pfxFile)
 
-			return inspect(pfxFile, password)
+			return inspect(pfxFile, password, false)
 		},
 	}
 
 	createFlags := createCmd.PersistentFlags()
 	createFlags.StringVar(&subjectCN, "cn", "", "Subject common name")
 	createFlags.StringVar(&upn, "upn", "", "Alternative UPN for otherName extension")
+	createFlags.StringVar(&sid, "sid", "", "User SID for certificate user mapping")
 	createFlags.StringVarP(&pfxFile, "output", "o", "", "PFX output file")
 	createFlags.StringVarP(&password, "password", "p", "", "PFX password")
 	createFlags.IntVar(&keySize, "key-size", 2048, "Private key size in bits")
@@ -419,7 +427,7 @@ func encrypt(
 	return nil
 }
 
-func inspect(pfxFile string, pfxPassword string) error {
+func inspect(pfxFile string, pfxPassword string, verbose bool) error {
 	pfxData, err := os.ReadFile(pfxFile)
 	if err != nil {
 		return fmt.Errorf("read PFX: %w", err)
@@ -430,32 +438,51 @@ func inspect(pfxFile string, pfxPassword string) error {
 		return fmt.Errorf("decode PFX: %w", err)
 	}
 
-	otherNames, err := othername.Names(cert)
+	otherNames, err := x509ext.OtherNames(cert)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: cannot extract UPNs: %v\n", err)
 	}
 
+	sid, err := x509ext.SID(cert)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: cannot extract SID: %v\n", err)
+	}
+
+	template, err := templateName(cert)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: cannot extract template name: %v\n", err)
+	}
+
 	fmt.Println("Certificate:")
-	fmt.Printf("  Subject    : %s\n", cert.Subject.CommonName)
+
+	if cert.Subject.CommonName != "" {
+		fmt.Printf("  Subject    : %s\n", cert.Subject.String())
+	}
 
 	if len(otherNames) > 0 {
 		fmt.Println("  Other Names:")
 
 		for _, otherName := range otherNames {
-			nameType := otherName.ID.String()
-			if otherName.ID.Equal(othername.UPNOID) {
-				nameType = "UPN"
+			switch otherName.ID.String() {
+			case x509ext.UPNOID.String():
+				var nameValue string
+
+				_, err = asn1.UnmarshalWithParams(otherName.Value.Bytes, &nameValue, "utf8")
+				if err != nil {
+					nameValue = base64.StdEncoding.EncodeToString(otherName.Value.Bytes)
+				}
+
+				fmt.Printf("    UPN : %s\n", nameValue)
+			case "1.3.6.1.4.1.311.25.1":
+				fmt.Printf("    GUID: %s\n", tryParseASN1GUID(otherName.Value.Bytes))
+			default:
+				fmt.Printf("    %s: %s\n", otherName.ID, base64.StdEncoding.EncodeToString(otherName.Value.Bytes))
 			}
-
-			var nameValue string
-
-			_, err = asn1.UnmarshalWithParams(otherName.Value.Bytes, &nameValue, "utf8")
-			if err != nil {
-				nameValue = base64.StdEncoding.EncodeToString(otherName.Value.Bytes)
-			}
-
-			fmt.Printf("    %s: %s\n", nameType, nameValue)
 		}
+	}
+
+	if sid != "" {
+		fmt.Printf("  SID        : %s\n", sid)
 	}
 
 	if len(cert.DNSNames) > 0 {
@@ -474,6 +501,10 @@ func inspect(pfxFile string, pfxPassword string) error {
 		fmt.Printf("  URIs       : %s\n", joinStringers(cert.URIs, ", "))
 	}
 
+	if template != "" {
+		fmt.Printf("  Template   : %s\n", template)
+	}
+
 	fmt.Printf("  Issuer     : %s\n", cert.Issuer.CommonName)
 	fmt.Printf("  Not Before : %s\n", cert.NotBefore)
 	fmt.Printf("  Not After  : %s\n", cert.NotAfter)
@@ -482,12 +513,32 @@ func inspect(pfxFile string, pfxPassword string) error {
 		fmt.Printf("  Key Usage  : %s\n", keyUsageString(cert.KeyUsage))
 	}
 
-	if len(cert.ExtKeyUsage) > 0 {
+	if len(cert.ExtKeyUsage)+len(cert.UnknownExtKeyUsage) > 0 {
 		fmt.Printf("  EKU        : %s\n", extUsageString(cert.ExtKeyUsage, cert.UnknownExtKeyUsage))
+	}
+
+	if cert.IsCA {
+		fmt.Println("  CA Cert    : Yes")
 	}
 
 	fmt.Printf("  Public Key : %s\n", cert.PublicKeyAlgorithm)
 	fmt.Printf("  Signature  : %s\n", cert.SignatureAlgorithm)
+
+	if verbose && len(cert.CRLDistributionPoints) > 0 {
+		fmt.Println("  CRL   :")
+
+		for _, crl := range cert.CRLDistributionPoints {
+			fmt.Println("    " + crl)
+		}
+	}
+
+	if verbose {
+		fmt.Println("  Extensions :")
+
+		for _, ext := range cert.Extensions {
+			fmt.Printf("    %s: %s\n", oidName(ext.Id), base64.StdEncoding.EncodeToString(ext.Value))
+		}
+	}
 
 	keyType := strings.ToUpper(
 		strings.TrimPrefix(
@@ -511,7 +562,7 @@ func inspect(pfxFile string, pfxPassword string) error {
 }
 
 func create(
-	subject string, upn string, keyUsage x509.KeyUsage, extendedKeyUsage []x509.ExtKeyUsage,
+	subject string, upn string, sid string, keyUsage x509.KeyUsage, extendedKeyUsage []x509.ExtKeyUsage,
 	validity time.Duration, keySize int, outputFile string, outputPass string, force bool,
 ) error {
 	if outputFile == "" {
@@ -551,12 +602,21 @@ func create(
 	}
 
 	if upn != "" {
-		otherNameExtension, err := othername.ExtensionFromUPNs(upn)
+		otherNameExtension, err := x509ext.NewOtherNameExtensionFromUPNs(upn)
 		if err != nil {
 			return fmt.Errorf("generate otherName extension: %w", err)
 		}
 
 		template.ExtraExtensions = append(template.ExtraExtensions, otherNameExtension)
+	}
+
+	if sid != "" {
+		sidExtension, err := x509ext.NewNTDSCaSecurityExt(sid)
+		if err != nil {
+			return fmt.Errorf("generate NTDS_CA_SECURITY_EXT extension: %w", err)
+		}
+
+		template.ExtraExtensions = append(template.ExtraExtensions, sidExtension)
 	}
 
 	certDer, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
@@ -703,17 +763,109 @@ func extUsageString(ekus []x509.ExtKeyUsage, unknownEKUs []asn1.ObjectIdentifier
 	}
 
 	for _, unknownEKU := range unknownEKUs {
-		switch {
-		case unknownEKU.Equal(asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 20, 2, 2}):
-			kuStrings = append(kuStrings, "Smartcard Logon")
-		case unknownEKU.Equal(asn1.ObjectIdentifier{1, 3, 6, 1, 5, 2, 3, 5}):
-			kuStrings = append(kuStrings, "KDC Authentication")
-		default:
-			kuStrings = append(kuStrings, unknownEKU.String())
-		}
+		kuStrings = append(kuStrings, oidName(unknownEKU))
 	}
 
 	return strings.Join(kuStrings, ", ")
+}
+
+func oidName(oid asn1.ObjectIdentifier) string {
+	switch oid.String() {
+	case "1.3.6.1.4.1.311.20.2.2":
+		return "Smartcard Logon"
+	case "1.3.6.1.5.2.3.5":
+		return "KDC Authentication"
+	case "1.3.6.1.4.1.311.10.3.4":
+		return "EFS Crypto"
+	case "2.5.29.14":
+		return "Subject Key ID"
+	case "2.5.29.35":
+		return "CA Key ID"
+	case "2.5.29.31":
+		return "CRL Distribution Points"
+	case "1.3.6.1.5.5.7.1.1":
+		return "CA Information Access"
+	case "1.3.6.1.4.1.311.21.7":
+		return "Certificate Template Information"
+	case "1.3.6.1.4.1.311.20.2":
+		return "Certificate Template Name"
+	case "2.5.29.15":
+		return "Key Usage"
+	case "2.5.29.37":
+		return "Extended Key Usage"
+	case "2.5.29.17":
+		return "Subject Alternative Name"
+	case "1.3.6.1.4.1.311.25.2":
+		return "NTDS CA Security (SID)"
+	case "1.2.840.113549.1.9.15":
+		return "SMIME Capabilities"
+	case "1.3.6.1.4.1.311.21.10":
+		return "Certificate Application Policy"
+	case "1.3.6.1.4.1.311.21.19":
+		return "DS Email Replication"
+	case "2.5.29.19":
+		return "Basic Constraints"
+	case "1.3.6.1.4.1.311.10.3.4.1":
+		return "EFS Recovery"
+	default:
+		return oid.String()
+	}
+}
+
+func templateName(cert *x509.Certificate) (string, error) {
+	var (
+		templateName string
+		templateInfo string
+	)
+
+	for _, ext := range cert.Extensions {
+		if ext.Id.String() == "1.3.6.1.4.1.311.20.2" {
+			_, err := asn1.Unmarshal(ext.Value, &templateName)
+			if err != nil {
+				return "", fmt.Errorf("parse template name: %w", err)
+			}
+		} else if ext.Id.String() == "1.3.6.1.4.1.311.21.7" {
+			var template struct {
+				ID           asn1.ObjectIdentifier
+				MajorVersion int
+				MinorVersion int
+			}
+
+			_, err := asn1.Unmarshal(ext.Value, &template)
+			if err != nil {
+				return "", fmt.Errorf("parse template info: %w", err)
+			}
+
+			templateInfo = fmt.Sprintf("%s v%d.%d", template.ID, template.MajorVersion, template.MinorVersion)
+		}
+	}
+
+	if templateName != "" {
+		return templateName, nil
+	}
+
+	return templateInfo, nil
+}
+
+func tryParseASN1GUID(asn1Data []byte) string {
+	var rawGUID []byte
+
+	_, err := asn1.Unmarshal(asn1Data, &rawGUID)
+	if err != nil {
+		return base64.StdEncoding.EncodeToString(asn1Data)
+	}
+
+	if len(rawGUID) != 16 {
+		return base64.StdEncoding.EncodeToString(asn1Data)
+	}
+
+	return fmt.Sprintf(
+		"%08x-%04x-%04x-%04x-%012x",
+		binary.LittleEndian.Uint32(rawGUID[0:4]),
+		binary.LittleEndian.Uint16(rawGUID[4:6]),
+		binary.LittleEndian.Uint16(rawGUID[6:8]),
+		rawGUID[8:10],
+		rawGUID[10:])
 }
 
 func joinStringers[T fmt.Stringer](elems []T, sep string) string {

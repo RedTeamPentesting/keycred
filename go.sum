@@ -2,6 +2,14 @@ github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 h1:mFRzDkZVAjdal+
 github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358/go.mod h1:chxPXzSsl7ZWRAuOIE23GDNzjWuZquvFlgA8xmpunjU=
 github.com/RedTeamPentesting/adauth v0.4.1 h1:adYkygobmLs9DOBk6fEoTBTD8T0Wk23LwQzET1iiQcs=
 github.com/RedTeamPentesting/adauth v0.4.1/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
+github.com/RedTeamPentesting/adauth v0.4.2-0.20250804073650-953d02560543 h1:VeuP/8CTl1jFndWQW8nQiOiPD9RkHiU0kuLLUL5uVEc=
+github.com/RedTeamPentesting/adauth v0.4.2-0.20250804073650-953d02560543/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
+github.com/RedTeamPentesting/adauth v0.4.2-0.20250813110641-ea51cc58ea3f h1:GbQ3QPHspmIOd/Cw6IX4UJdqJiKW2kT2vyzQtYco554=
+github.com/RedTeamPentesting/adauth v0.4.2-0.20250813110641-ea51cc58ea3f/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
+github.com/RedTeamPentesting/adauth v0.4.2-0.20250813111817-7b7557c2017b h1:LhTxul8uIVX8mIi1g+gy+AM/Bv+hVZJ+CrDFO+F0+kw=
+github.com/RedTeamPentesting/adauth v0.4.2-0.20250813111817-7b7557c2017b/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
+github.com/RedTeamPentesting/adauth v0.5.0 h1:yKTLAeP2hrer9Bez4qM+fFqeVUuHfS5UhYE3WwMmxyU=
+github.com/RedTeamPentesting/adauth v0.5.0/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
 github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa h1:LHTHcTQiSGT7VVbI0o4wBRNQIgn917usHWOd6VAffYI=
 github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa/go.mod h1:cEWa1LVoE5KvSD9ONXsZrj0z6KqySlCCNKHlLzbqAt4=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=

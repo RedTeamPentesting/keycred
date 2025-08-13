@@ -12,7 +12,7 @@ import (
 
 	mathrand "math/rand"
 
-	"github.com/RedTeamPentesting/adauth/othername"
+	"github.com/RedTeamPentesting/adauth/x509ext"
 	"github.com/google/uuid"
 	"software.sslmate.com/src/go-pkcs12"
 )
@@ -135,7 +135,7 @@ func createKeyAndCert(keySize int, subject string, otherName string) (*rsa.Priva
 	}
 
 	if otherName != "" {
-		otherNameExtension, err := othername.ExtensionFromUPNs(otherName)
+		otherNameExtension, err := x509ext.NewOtherNameExtensionFromUPNs(otherName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("generate otherName extension: %w", err)
 		}
