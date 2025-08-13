@@ -8,6 +8,8 @@ builds:
     id: keycred
     main: ./cmd/keycred
     binary: keycred
+    ldflags:
+      - -s -w -X main.version=v{{.Version}}
     env:
       - CGO_ENABLED=0
     targets:
@@ -20,6 +22,8 @@ builds:
     id: pfxtool
     main: ./cmd/pfxtool
     binary: pfxtool
+    ldflags:
+      - -s -w -X main.version=v{{.Version}}
     env:
       - CGO_ENABLED=0
     targets:

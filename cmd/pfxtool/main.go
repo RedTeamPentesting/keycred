@@ -24,6 +24,8 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 )
 
+var version string
+
 func run() error {
 	var (
 		password         string
@@ -181,6 +183,21 @@ func run() error {
 	createFlags.IntSliceVar(&extendedKeyUsage, "eku", []int{int(x509.ExtKeyUsageClientAuth)}, "Extended key usage")
 
 	rootCmd.AddCommand(createCmd)
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:           "version",
+		Short:         "Print the version",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		Args:          cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			if version != "" {
+				fmt.Println(version)
+			} else {
+				fmt.Println("unknown")
+			}
+		},
+	})
 
 	return rootCmd.Execute()
 }

@@ -16,6 +16,8 @@ import (
 	"github.com/RedTeamPentesting/adauth/ldapauth"
 )
 
+var version string
+
 //nolint:maintidx
 func run() error {
 	var (
@@ -393,6 +395,21 @@ func run() error {
 			fmt.Println(kcl.ColoredString())
 
 			return nil
+		},
+	})
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:           "version",
+		Short:         "Print the version",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		Args:          cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			if version != "" {
+				fmt.Println(version)
+			} else {
+				fmt.Println("unknown")
+			}
 		},
 	})
 
