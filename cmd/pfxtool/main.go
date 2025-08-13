@@ -16,6 +16,7 @@ import (
 	mathrand "math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -472,8 +473,8 @@ func inspect(pfxFile string, pfxPassword string, verbose bool) error {
 
 	fmt.Println("Certificate:")
 
-	if cert.Subject.CommonName != "" {
-		fmt.Printf("  Subject    : %s\n", cert.Subject.String())
+	if len(cert.Subject.Names) > 0 {
+		fmt.Printf("  Subject    : %s\n", nameAsString(cert.Subject))
 	}
 
 	if len(otherNames) > 0 {
@@ -883,6 +884,45 @@ func tryParseASN1GUID(asn1Data []byte) string {
 		binary.LittleEndian.Uint16(rawGUID[6:8]),
 		rawGUID[8:10],
 		rawGUID[10:])
+}
+
+func nameAsString(pkixName pkix.Name) string {
+	parts := make([]string, 0, len(pkixName.Names))
+
+	for _, name := range pkixName.Names {
+		var key string
+
+		switch name.Type.String() {
+		case "2.5.4.6":
+			key = "C"
+		case "2.5.4.10":
+			key = "O"
+		case "2.5.4.11":
+			key = "OU"
+		case "2.5.4.3":
+			key = "CN"
+		case "2.5.4.5":
+			key = "SERIALNUMBER"
+		case "2.5.4.7":
+			key = "L"
+		case "2.5.4.8":
+			key = "ST"
+		case "2.5.4.9":
+			key = "STREET"
+		case "2.5.4.17":
+			key = "POSTALCODE"
+		case "0.9.2342.19200300.100.1.25":
+			key = "DC"
+		default:
+			key = "{" + name.Type.String() + "}"
+		}
+
+		parts = append(parts, fmt.Sprintf("%s=%v", key, name.Value))
+	}
+
+	slices.Reverse(parts)
+
+	return strings.Join(parts, ",")
 }
 
 func joinStringers[T fmt.Stringer](elems []T, sep string) string {
