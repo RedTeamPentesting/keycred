@@ -1,9 +1,5 @@
 github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 h1:mFRzDkZVAjdal+s7s0MwaRv9igoPqLRdzOLzw/8Xvq8=
 github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358/go.mod h1:chxPXzSsl7ZWRAuOIE23GDNzjWuZquvFlgA8xmpunjU=
-github.com/RedTeamPentesting/adauth v0.5.0 h1:yKTLAeP2hrer9Bez4qM+fFqeVUuHfS5UhYE3WwMmxyU=
-github.com/RedTeamPentesting/adauth v0.5.0/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
-github.com/RedTeamPentesting/adauth v0.5.1-0.20250930093043-2950c7f2e251 h1:xeDRrMWo1vQaS471N978J8x0JdRJK43vqRI+MsuPrxI=
-github.com/RedTeamPentesting/adauth v0.5.1-0.20250930093043-2950c7f2e251/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
 github.com/RedTeamPentesting/adauth v0.5.1 h1:U45oiKBxMNCs55ySDYaNNDyUPSlk69ssTEs15hoC7Cg=
 github.com/RedTeamPentesting/adauth v0.5.1/go.mod h1:9gHAk9qi+kZt5+orAgpE+oHFu32ijpvl4l7CYjg1aJc=
 github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa h1:LHTHcTQiSGT7VVbI0o4wBRNQIgn917usHWOd6VAffYI=
