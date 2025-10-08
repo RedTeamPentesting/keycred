@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RedTeamPentesting/adauth"
 	"github.com/RedTeamPentesting/adauth/x509ext"
 	"github.com/spf13/cobra"
 	"software.sslmate.com/src/go-pkcs12"
@@ -320,7 +321,7 @@ func split(pfxFile string, pfxPassword string, certFile string, keyFile string, 
 		return fmt.Errorf("read PFX: %w", err)
 	}
 
-	key, cert, _, err := pkcs12.DecodeChain(pfxData, pfxPassword)
+	key, cert, _, err := adauth.DecodePFX(pfxData, pfxPassword)
 	if err != nil {
 		return fmt.Errorf("decode PFX: %w", err)
 	}
@@ -377,7 +378,7 @@ func decrypt(encryptedPFXFile string, password string, decryptedPFXFile string, 
 		return fmt.Errorf("read PFX: %w", err)
 	}
 
-	key, cert, chain, err := pkcs12.DecodeChain(encryptedPFXData, password)
+	key, cert, chain, err := adauth.DecodePFX(encryptedPFXData, password)
 	if err != nil {
 		return fmt.Errorf("decode PFX: %w", err)
 	}
@@ -425,7 +426,7 @@ func encrypt(
 		return fmt.Errorf("read PFX: %w", err)
 	}
 
-	key, cert, chain, err := pkcs12.DecodeChain(pfxData, originalPassword)
+	key, cert, chain, err := adauth.DecodePFX(pfxData, originalPassword)
 	if err != nil {
 		return fmt.Errorf("decode PFX: %w", err)
 	}
@@ -451,7 +452,7 @@ func inspect(pfxFile string, pfxPassword string, verbose bool) error {
 		return fmt.Errorf("read PFX: %w", err)
 	}
 
-	key, cert, chain, err := pkcs12.DecodeChain(pfxData, pfxPassword)
+	key, cert, chain, err := adauth.DecodePFX(pfxData, pfxPassword)
 	if err != nil {
 		return fmt.Errorf("decode PFX: %w", err)
 	}

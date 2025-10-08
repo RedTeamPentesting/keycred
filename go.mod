@@ -5,7 +5,7 @@ go 1.24.1
 toolchain go1.24.4
 
 require (
-	github.com/RedTeamPentesting/adauth v0.5.0
+	github.com/RedTeamPentesting/adauth v0.5.1
 	github.com/go-ldap/ldap/v3 v3.4.11
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.9.1
