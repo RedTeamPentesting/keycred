@@ -130,6 +130,8 @@ func (kcl *KeyCredentialLink) string(colors bool) string {
 	err = kcl.CheckValidatedWriteCompatible()
 	if err == nil {
 		properties = append(properties, style(fgBlue)+"Validated Write Compatible"+style())
+	} else {
+		properties = append(properties, style(fgYellow)+"Not Validated Write Compatible"+style())
 	}
 
 	if kcl.DN != "" {
