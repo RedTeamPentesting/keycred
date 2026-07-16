@@ -64,7 +64,10 @@ func GeneratePFXAndValidatedWriteCompatibleKeyCredentialLink(
 		NewKeySourceEntry(KeySourceAD),
 		NewDeviceIDEntry(deviceID),
 		NewKeyCreationTimeEntry(time.Now()),
-	}
+		NewCustomKeyInformationEntry(&CustomKeyInformation{
+			Version: 1,
+			Flags:   CustomKeyInformationFlagsMFANotUsed,
+		})}
 
 	cred, err := GeneratePFXAndCustomKeyCredentialLink(
 		keySize, subject, dn, otherName, true, pfxPassword, additionalEntries...)
