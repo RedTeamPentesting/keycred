@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.x
+          go-version: 1.26.x
         id: go
 
       - name: Checkout code
@@ -41,7 +41,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.25.x
+          go-version: 1.26.x
         id: go
 
       - name: Checkout code
@@ -55,7 +55,7 @@ jobs:
     strategy:
       matrix:
         go-version:
-          - 1.25.x
+          - 1.26.x
     runs-on: ubuntu-latest
     name: Build with Go ${{ matrix.go-version }}
     env:
