@@ -5,6 +5,7 @@ import (
 
 	"github.com/RedTeamPentesting/adauth"
 	"github.com/RedTeamPentesting/keycred"
+	"github.com/google/uuid"
 )
 
 func TestGeneratePFXAndKeyCredentialLink(t *testing.T) {
@@ -78,7 +79,7 @@ func TestGeneratePFXAndValidatedWriteCompatibleKeyCredentialLink(t *testing.T) {
 			"user1",
 			"CN=user,DC=domain",
 			"",
-			[16]byte(make([]byte, 16)),
+			new(uuid.UUID([16]byte(make([]byte, 16)))),
 			"",
 		)
 		if err != nil {
@@ -115,7 +116,7 @@ func TestGeneratePFXAndValidatedWriteCompatibleKeyCredentialLink(t *testing.T) {
 			"user1",
 			"CN=user,DC=domain",
 			"",
-			[16]byte(make([]byte, 16)),
+			new(uuid.UUID([16]byte(make([]byte, 16)))),
 			password,
 		)
 		if err != nil {

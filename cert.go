@@ -58,16 +58,23 @@ func GeneratePFXAndKeyCredentialLink(
 // supplied which will be reflected in an otherName certificate SAN extension if
 // it is not empty.
 func GeneratePFXAndValidatedWriteCompatibleKeyCredentialLink(
-	keySize int, subject string, dn string, otherName string, deviceID uuid.UUID, pfxPassword string,
+	keySize int, subject string, dn string, otherName string, deviceID *uuid.UUID, pfxPassword string,
 ) (*Credential, error) {
 	additionalEntries := []KeyCredentialLinkEntry{
 		NewKeySourceEntry(KeySourceAD),
-		NewDeviceIDEntry(deviceID),
-		NewKeyCreationTimeEntry(time.Now()),
-		NewCustomKeyInformationEntry(&CustomKeyInformation{
+	}
+
+	if deviceID != nil {
+		additionalEntries = append(additionalEntries, NewDeviceIDEntry(*deviceID))
+	}
+
+	additionalEntries = append(additionalEntries, NewCustomKeyInformationEntry(
+		&CustomKeyInformation{
 			Version: 1,
 			Flags:   CustomKeyInformationFlagsMFANotUsed,
-		})}
+		}),
+		NewKeyCreationTimeEntry(time.Now()),
+	)
 
 	cred, err := GeneratePFXAndCustomKeyCredentialLink(
 		keySize, subject, dn, otherName, true, pfxPassword, additionalEntries...)

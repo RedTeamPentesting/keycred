@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -199,6 +200,18 @@ func (kcl *KeyCredentialLink) Get(entryType uint8) KeyCredentialLinkEntry {
 	return nil
 }
 
+// Index returns the index of the first entry that matches entryType and -1 if
+// no entry of type entryType is present in the KeyCredentialLink.
+func (kcl *KeyCredentialLink) Index(entryType uint8) int {
+	for i, entry := range kcl.Entries {
+		if entry.Entry().Identifier == entryType {
+			return i
+		}
+	}
+
+	return -1
+}
+
 // Bytes returns the binary representation of the KEYCREDENTIALLINK_BLOB
 // structure
 // (https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/f3f01e95-6d0c-4fe6-8b43-d585167658fa).
@@ -306,11 +319,13 @@ func (kcl *KeyCredentialLink) validate(strict bool) error {
 // violation of the specs. This method returns true if the actual implementation
 // would accept the KeyCredentialLink.
 func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
+	// it has to be a valid KeyCredentialLink
 	err := kcl.Validate()
 	if err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
 
+	// KeyUsageEntry is required and it has to be NGC
 	keyUsage, ok := kcl.Get(TypeKeyUsage).(*KeyUsageEntry)
 	if !ok {
 		return fmt.Errorf("unexpected type for KeyUsage entry: %T", kcl.Get(TypeKeyUsage))
@@ -320,18 +335,7 @@ func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
 		return fmt.Errorf("KeyUsage is %s (%d) instead of NGC", keyUsage.UsageString(), keyUsage.Usage())
 	}
 
-	keySourceEntryInterface := kcl.Get(TypeKeySource)
-	if keySourceEntryInterface != nil {
-		keySource, ok := keySourceEntryInterface.(*KeySourceEntry)
-		if !ok {
-			return fmt.Errorf("unexpected type for KeyUsage entry: %T", kcl.Get(TypeKeyUsage))
-		}
-
-		if keySource.Source() != KeySourceAD {
-			return fmt.Errorf("KeySource is %s instead of AD", keySource.SourceString())
-		}
-	}
-
+	// CustomKeyInformation is required and its Flags have to be MFANotUsed
 	customKeyInformation := kcl.Get(TypeCustomKeyInformation)
 	if customKeyInformation == nil {
 		return fmt.Errorf("CustomKeyInformation is not present")
@@ -347,9 +351,59 @@ func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
 			ckie.Info.Flags, CustomKeyInformationFlagsMFANotUsed)
 	}
 
+	// KeySource is optional, but if it is present, it must be AD
+	keySourceEntryInterface := kcl.Get(TypeKeySource)
+	if keySourceEntryInterface != nil {
+		keySource, ok := keySourceEntryInterface.(*KeySourceEntry)
+		if !ok {
+			return fmt.Errorf("unexpected type for KeyUsage entry: %T", kcl.Get(TypeKeyUsage))
+		}
+
+		if keySource.Source() != KeySourceAD {
+			return fmt.Errorf("KeySource is %s instead of AD", keySource.SourceString())
+		}
+	}
+
+	// ApproximateLastLogonTimeStamp must NOT be present
 	approximateLastLogonTimeStamp := kcl.Get(TypeKeyApproximateLastLogonTimeStamp)
 	if approximateLastLogonTimeStamp != nil {
 		return fmt.Errorf("ApproximateLastLogonTimeStamp is present")
+	}
+
+	// all entries (including optional entries) have to be in a specific order
+	order := []int{
+		kcl.Index(TypeKeyID),
+		kcl.Index(TypeKeyHash),
+		kcl.Index(TypeKeyMaterial),
+		kcl.Index(TypeKeyUsage),
+	}
+
+	keySourceIndex := kcl.Index(TypeKeySource)
+	if keySourceIndex > -1 {
+		order = append(order, keySourceIndex)
+	}
+
+	deviceIDIndex := kcl.Index(TypeDeviceId)
+	if deviceIDIndex > -1 {
+		order = append(order, deviceIDIndex)
+	}
+
+	order = append(order, kcl.Index(TypeCustomKeyInformation))
+
+	keyCreationTimeIndex := kcl.Index(TypeKeyCreationTime)
+	if keyCreationTimeIndex > -1 {
+		order = append(order, keyCreationTimeIndex)
+	}
+
+	// sanity check
+	for _, idx := range order {
+		if idx < 0 {
+			return fmt.Errorf("cannot check order with non-existing entries")
+		}
+	}
+
+	if !slices.IsSorted(order) {
+		return fmt.Errorf("invalid order of entries")
 	}
 
 	return nil
@@ -512,12 +566,16 @@ func (e *multipleErrs) Error() string {
 		return ""
 	}
 
-	errStr := e.errs[0].Error()
+	var errStr strings.Builder
+
+	errStr.WriteString(e.errs[0].Error())
+
 	for _, err := range e.errs[1:] {
-		errStr += ", " + err.Error()
+		errStr.WriteString(", ")
+		errStr.WriteString(err.Error())
 	}
 
-	return errStr
+	return errStr.String()
 }
 
 func (e *multipleErrs) Unwrap() []error {

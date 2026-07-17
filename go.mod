@@ -1,6 +1,6 @@
 module github.com/RedTeamPentesting/keycred
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/RedTeamPentesting/adauth v0.5.3
