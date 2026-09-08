@@ -421,7 +421,7 @@ func backupKeyCredentialsOfUser(conn *ldap.Conn, target string, filename string,
 	return nil
 }
 
-func restoreBackup(conn *ldap.Conn, backupFile string, force bool) error {
+func restoreBackup(conn *ldap.Conn, backupFile string, force bool, noremovets bool) error {
 	backupData, err := os.ReadFile(backupFile)
 	if err != nil {
 		return fmt.Errorf("read backup file: %w", err)
@@ -444,10 +444,31 @@ func restoreBackup(conn *ldap.Conn, backupFile string, force bool) error {
 	}
 
 	if !force {
-		for _, keyCred := range backup.KeyCredentialLinks {
-			_, err := keycred.ParseDNWithBinary(keyCred)
+		for i, keyCred := range backup.KeyCredentialLinks {
+			cur, err := keycred.ParseDNWithBinary(keyCred)
 			if err != nil {
 				return fmt.Errorf("parse KeyCredential from backup: %w", err)
+			}
+			if !noremovets {
+				modified := false
+				// Remove KeyApproximateLastLogonTimeStamp for validated write compatibility if present
+				for i, entry := range cur.Entries {
+					if entry.Entry().Identifier == keycred.TypeKeyApproximateLastLogonTimeStamp {
+						cur.Entries = append(cur.Entries[:i], cur.Entries[i+1:]...)
+						modified = true
+						break
+					}
+				}
+				if modified {
+					// Recalculate hash if present
+					for i, entry := range cur.Entries {
+						if entry.Entry().Identifier == keycred.TypeKeyHash {
+							cur.Entries[i] = keycred.NewKeyHashEntry(cur.Entries[i+1:])
+							break
+						}
+					}
+					backup.KeyCredentialLinks[i] = cur.DNWithBinary()
+				}
 			}
 		}
 	}

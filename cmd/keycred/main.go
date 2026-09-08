@@ -325,6 +325,7 @@ func run() error {
 	rootCmd.AddCommand(&backupCmd)
 
 	var force bool
+	var noremovets bool
 
 	restoreCmd := cobra.Command{
 		Use:           "restore <backup file>",
@@ -344,12 +345,13 @@ func run() error {
 				targetUser = authOpts.UPN()
 			}
 
-			return restoreBackup(conn, args[0], force)
+			return restoreBackup(conn, args[0], force, noremovets)
 		},
 	}
 
 	restoreFlags := restoreCmd.PersistentFlags()
 	restoreFlags.BoolVar(&force, "force", false, "Skip backup sanity checks")
+	restoreFlags.BoolVar(&noremovets, "no-remove-ts", false, "Do not remove KeyApproximateLastLogonTimeStamp field")
 
 	rootCmd.AddCommand(&restoreCmd)
 
