@@ -128,7 +128,7 @@ func (kcl *KeyCredentialLink) string(colors bool) string {
 		properties = append(properties, style(fgGreen)+"Valid"+style())
 	}
 
-	err = kcl.CheckValidatedWriteCompatible()
+	err = kcl.CheckValidatedWriteCompatibleWithoutApproximateLastLogonTimeStampPresence()
 	if err == nil {
 		properties = append(properties, style(fgBlue)+"Validated Write Compatible"+style())
 	} else {
@@ -319,6 +319,17 @@ func (kcl *KeyCredentialLink) validate(strict bool) error {
 // violation of the specs. This method returns true if the actual implementation
 // would accept the KeyCredentialLink.
 func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
+	// ApproximateLastLogonTimeStamp must NOT be present
+	if kcl.CheckApproximateLastLogonTimeStampPresence() {
+		return fmt.Errorf("ApproximateLastLogonTimeStamp is present")
+	}
+	return kcl.CheckValidatedWriteCompatibleWithoutApproximateLastLogonTimeStampPresence()
+}
+
+// Does not check for presence of ApproximateLastLogonTimeStamp
+// which we can remove when recovering, so we don't consider it a strict
+// requirement in the use of the utility
+func (kcl *KeyCredentialLink) CheckValidatedWriteCompatibleWithoutApproximateLastLogonTimeStampPresence() error {
 	// it has to be a valid KeyCredentialLink
 	err := kcl.Validate()
 	if err != nil {
@@ -364,12 +375,6 @@ func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
 		}
 	}
 
-	// ApproximateLastLogonTimeStamp must NOT be present
-	approximateLastLogonTimeStamp := kcl.Get(TypeKeyApproximateLastLogonTimeStamp)
-	if approximateLastLogonTimeStamp != nil {
-		return fmt.Errorf("ApproximateLastLogonTimeStamp is present")
-	}
-
 	// all entries (including optional entries) have to be in a specific order
 	order := []int{
 		kcl.Index(TypeKeyID),
@@ -407,6 +412,14 @@ func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
 	}
 
 	return nil
+}
+
+func (kcl *KeyCredentialLink) CheckApproximateLastLogonTimeStampPresence() bool {
+	approximateLastLogonTimeStamp := kcl.Get(TypeKeyApproximateLastLogonTimeStamp)
+	if approximateLastLogonTimeStamp != nil {
+		return true
+	}
+	return false
 }
 
 // DNWithBinary returns the DN-Binary representation of the KeyCredentialLink
