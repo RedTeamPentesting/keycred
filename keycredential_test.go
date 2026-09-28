@@ -381,3 +381,46 @@ func TestValidatedWriteCompatbile(t *testing.T) {
 		})
 	}
 }
+
+func TestRemove(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	lastLogon := time.Now()
+
+	additionalProperties := []keycred.KeyCredentialLinkEntry{
+		keycred.NewKeySourceEntry(keycred.KeySourceAD),
+		keycred.NewKeyApproximateLastLogonTimeStampEntry(lastLogon),
+	}
+
+	kcl, err := keycred.NewKeyCredentialLink(
+		&key.PublicKey, "CN=Administrator,CN=Users,DC=lab,DC=redteam", keycred.KeyUsageNGC, additionalProperties...)
+	if err != nil {
+		t.Fatalf("generate KeyCredentialLink: %v", err)
+	}
+
+	if kcl.Remove(keycred.TypeDeviceId) {
+		t.Fatalf("trying to remove non-existing device type entry did not return false")
+	}
+
+	if kcl.Index(keycred.TypeKeyApproximateLastLogonTimeStamp) < 0 {
+		t.Fatalf("last logon time stamp was not present before removal")
+	}
+
+	if !kcl.Remove(keycred.TypeKeyApproximateLastLogonTimeStamp) {
+		t.Fatalf("removing last logon time stamp did not return true")
+	}
+
+	err = kcl.ValidateStrict()
+	if err != nil {
+		t.Fatalf("validation failed after removing last logon time stamp: %v", err)
+	}
+
+	if kcl.Index(keycred.TypeKeyApproximateLastLogonTimeStamp) >= 0 {
+		t.Fatalf("last logon time stamp is still present after removal")
+	}
+}

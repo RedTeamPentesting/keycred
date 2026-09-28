@@ -128,7 +128,7 @@ func (kcl *KeyCredentialLink) string(colors bool) string {
 		properties = append(properties, style(fgGreen)+"Valid"+style())
 	}
 
-	err = kcl.CheckValidatedWriteCompatibleWithoutApproximateLastLogonTimeStampPresence()
+	err = kcl.CheckValidatedWriteCompatible()
 	if err == nil {
 		properties = append(properties, style(fgBlue)+"Validated Write Compatible"+style())
 	} else {
@@ -210,6 +210,39 @@ func (kcl *KeyCredentialLink) Index(entryType uint8) int {
 	}
 
 	return -1
+}
+
+// Remove removes all entries of the given type and re-calculates all key hash
+// entries.
+func (kcl *KeyCredentialLink) Remove(entryType uint8) bool {
+	newEntries := make([]KeyCredentialLinkEntry, 0, len(kcl.Entries))
+
+	var found bool
+
+	for _, entry := range kcl.Entries {
+		switch {
+		case entry.Entry().Identifier == entryType:
+			found = true
+		default:
+			newEntries = append(newEntries, entry)
+		}
+	}
+
+	if !found {
+		return false
+	}
+
+	kcl.Entries = newEntries
+
+	for i := len(kcl.Entries) - 1; i > 0; i-- {
+		if kcl.Entries[i].Entry().Identifier != TypeKeyHash {
+			continue
+		}
+
+		kcl.Entries[i] = NewKeyHashEntry(kcl.Entries[i+1:])
+	}
+
+	return true
 }
 
 // Bytes returns the binary representation of the KEYCREDENTIALLINK_BLOB
@@ -306,6 +339,18 @@ func (kcl *KeyCredentialLink) validate(strict bool) error {
 	return joinErrorsWithComma(validationErrors...)
 }
 
+// CheckValidatedWriteCompatibleStrict is like CheckValidatedWriteCompatible but
+// it fails when an approximate last logon time stamp is present which is not
+// allowed for validated writes.
+func (kcl *KeyCredentialLink) CheckValidatedWriteCompatibleStrict() error {
+	// ApproximateLastLogonTimeStamp must NOT be present
+	if kcl.Get(TypeKeyApproximateLastLogonTimeStamp) != nil {
+		return fmt.Errorf("ApproximateLastLogonTimeStamp is present")
+	}
+
+	return kcl.CheckValidatedWriteCompatible()
+}
+
 // CheckValidatedWriteCompatible checks whether the KeyCredentialLink is
 // configured to be written to msDS-KeyCredentialLink attribute with
 // RIGHT_DS_WRITE_PROPERTY_EXTENDED permissions instead of
@@ -318,18 +363,12 @@ func (kcl *KeyCredentialLink) validate(strict bool) error {
 // However, the rules of Microsoft's actual implementation are in direct
 // violation of the specs. This method returns true if the actual implementation
 // would accept the KeyCredentialLink.
+//
+// CheckValidatedWriteCompatible does not return an error when an approximate
+// last logon time stamp is present because it can be omitted when installing
+// the KeyCredentialLink with validated write permissions and it will be added
+// by the domain controller after authenticating.
 func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
-	// ApproximateLastLogonTimeStamp must NOT be present
-	if kcl.CheckApproximateLastLogonTimeStampPresence() {
-		return fmt.Errorf("ApproximateLastLogonTimeStamp is present")
-	}
-	return kcl.CheckValidatedWriteCompatibleWithoutApproximateLastLogonTimeStampPresence()
-}
-
-// Does not check for presence of ApproximateLastLogonTimeStamp
-// which we can remove when recovering, so we don't consider it a strict
-// requirement in the use of the utility
-func (kcl *KeyCredentialLink) CheckValidatedWriteCompatibleWithoutApproximateLastLogonTimeStampPresence() error {
 	// it has to be a valid KeyCredentialLink
 	err := kcl.Validate()
 	if err != nil {
@@ -412,14 +451,6 @@ func (kcl *KeyCredentialLink) CheckValidatedWriteCompatibleWithoutApproximateLas
 	}
 
 	return nil
-}
-
-func (kcl *KeyCredentialLink) CheckApproximateLastLogonTimeStampPresence() bool {
-	approximateLastLogonTimeStamp := kcl.Get(TypeKeyApproximateLastLogonTimeStamp)
-	if approximateLastLogonTimeStamp != nil {
-		return true
-	}
-	return false
 }
 
 // DNWithBinary returns the DN-Binary representation of the KeyCredentialLink
