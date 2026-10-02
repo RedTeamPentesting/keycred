@@ -421,7 +421,13 @@ func backupKeyCredentialsOfUser(conn *ldap.Conn, target string, filename string,
 	return nil
 }
 
-func restoreBackup(conn *ldap.Conn, backupFile string, force bool, preserveLastLogonTimeStamp bool) error {
+func restoreBackup(
+	conn *ldap.Conn,
+	backupFile string,
+	force bool,
+	preserveLastLogonTimeStamp bool,
+	makeValidatedWriteCompatible bool,
+) error {
 	backupData, err := os.ReadFile(backupFile)
 	if err != nil {
 		return fmt.Errorf("read backup file: %w", err)
@@ -443,7 +449,19 @@ func restoreBackup(conn *ldap.Conn, backupFile string, force bool, preserveLastL
 		return fmt.Errorf("base DN mismatch: %w", err)
 	}
 
-	if !preserveLastLogonTimeStamp {
+	switch {
+	case makeValidatedWriteCompatible:
+		for i, keyCred := range backup.KeyCredentialLinks {
+			backup.KeyCredentialLinks[i], err = keycred.MakeValidatedWriteCompatibleDNWithBinary(keyCred)
+			if err != nil {
+				return fmt.Errorf("make KeyCredentialLink at index %d validated write compatible: %w", i, err)
+			}
+		}
+	case preserveLastLogonTimeStamp:
+		// backup exactly as-is
+	default:
+		// remove ApproximateLastLogonTimeStamp because it is added by the DC
+		// and cannot be added through validated writes.
 		for i, keyCred := range backup.KeyCredentialLinks {
 			kcl, err := keycred.ParseDNWithBinary(keyCred)
 			if err != nil {
@@ -458,9 +476,14 @@ func restoreBackup(conn *ldap.Conn, backupFile string, force bool, preserveLastL
 
 	if !force {
 		for _, keyCred := range backup.KeyCredentialLinks {
-			_, err := keycred.ParseDNWithBinary(keyCred)
+			kcl, err := keycred.ParseDNWithBinary(keyCred)
 			if err != nil {
-				return fmt.Errorf("parse KeyCredential from backup: %w", err)
+				return fmt.Errorf("parse KeyCredential before restoring: %w", err)
+			}
+
+			err = kcl.Validate()
+			if err != nil {
+				return fmt.Errorf("validate KeyCredentialLink before restoring: %w", err)
 			}
 		}
 	}

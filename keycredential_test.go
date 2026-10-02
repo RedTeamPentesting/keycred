@@ -424,3 +424,95 @@ func TestRemove(t *testing.T) {
 		t.Fatalf("last logon time stamp is still present after removal")
 	}
 }
+
+func TestSort(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	keyMaterialEntry, err := keycred.NewKeyMaterialEntry(&key.PublicKey, true, keycred.Version2)
+	if err != nil {
+		t.Fatalf("generate key material entry: %v", err)
+	}
+
+	keyIDEntry, err := keycred.NewKeyIDEntry(keyMaterialEntry, keycred.Version2)
+	if err != nil {
+		t.Fatalf("generate key ID entry: %v", err)
+	}
+
+	unknownEntry := &keycred.RawEntry{}
+
+	kcl := &keycred.KeyCredentialLink{
+		Version: keycred.Version2,
+		Entries: []keycred.KeyCredentialLinkEntry{
+			unknownEntry,
+			keycred.NewKeyCreationTimeEntry(time.Now()),
+			keycred.NewKeyApproximateLastLogonTimeStampEntry(time.Now()),
+			keycred.NewCustomKeyInformationEntry(&keycred.CustomKeyInformation{}),
+			keycred.NewDeviceIDEntry(uuid.New()),
+			keycred.NewKeySourceEntry(keycred.KeySourceAD),
+			keycred.NewKeyUsageEntry(keycred.KeyUsageNGC),
+			keyMaterialEntry,
+			keycred.NewKeyHashEntry([]keycred.KeyCredentialLinkEntry{keyIDEntry}),
+			keyIDEntry,
+		},
+	}
+
+	if kcl.Sorted() {
+		t.Fatalf("Sort() claims that unsorted KCL is sorted")
+	}
+
+	kcl.Sort()
+
+	if !kcl.Sorted() {
+		t.Fatalf("KCL is not sorted after sorting")
+	}
+
+	if kcl.Entries[len(kcl.Entries)-1] != unknownEntry {
+		t.Fatalf("unknown entry was not placed at the end")
+	}
+
+	err = kcl.Validate()
+	if err != nil {
+		t.Fatalf("validate sorted KCL: %v", err)
+	}
+}
+
+func TestMakeValidatedWriteCompatible(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	kcl, err := keycred.NewKeyCredentialLink(
+		&key.PublicKey,
+		"",
+		keycred.KeyUsageAdminKey,
+		keycred.NewKeyApproximateLastLogonTimeStampEntry(time.Now()),
+		keycred.NewKeySourceEntry(keycred.KeySourceEntraID),
+		keycred.NewCustomKeyInformationEntry(&keycred.CustomKeyInformation{}),
+	)
+	if err != nil {
+		t.Fatalf("generate non-validated-write compatible KeyCredentialLink: %v", err)
+	}
+
+	err = kcl.CheckValidatedWriteCompatibleStrict()
+	if err == nil {
+		t.Fatalf("KeyCredentialLink is already validated write compatible")
+	}
+
+	kcl, err = keycred.MakeValidatedWriteCompatible(kcl)
+	if err != nil {
+		t.Fatalf("MakeValidatedWriteCompatible: %v", err)
+	}
+
+	err = kcl.CheckValidatedWriteCompatibleStrict()
+	if err != nil {
+		t.Fatalf("KeyCredentialLink is not validated write compatible after modification")
+	}
+}

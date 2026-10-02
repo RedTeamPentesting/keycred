@@ -325,8 +325,9 @@ func run() error {
 	rootCmd.AddCommand(&backupCmd)
 
 	var (
-		force                      bool
-		preserveLastLogonTimeStamp bool
+		force                        bool
+		preserveLastLogonTimeStamp   bool
+		makeValidatedWriteCompatible bool
 	)
 
 	restoreCmd := cobra.Command{
@@ -347,14 +348,16 @@ func run() error {
 				targetUser = authOpts.UPN()
 			}
 
-			return restoreBackup(conn, args[0], force, preserveLastLogonTimeStamp)
+			return restoreBackup(conn, args[0], force, preserveLastLogonTimeStamp, makeValidatedWriteCompatible)
 		},
 	}
 
 	restoreFlags := restoreCmd.PersistentFlags()
 	restoreFlags.BoolVar(&force, "force", false, "Skip backup sanity checks")
 	restoreFlags.BoolVar(&preserveLastLogonTimeStamp, "preserve-last-logon-timestamp", false,
-		"Do not remove KeyApproximateLastLogonTimeStamp field")
+		"Do not remove KeyApproximateLastLogonTimeStamp field (restore without modification)")
+	restoreFlags.BoolVar(&makeValidatedWriteCompatible, "make-validated-write-compatible", false,
+		"Modify KeyCredentialLinks from backup to be validated write compatible")
 
 	rootCmd.AddCommand(&restoreCmd)
 

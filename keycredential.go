@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -234,6 +235,13 @@ func (kcl *KeyCredentialLink) Remove(entryType uint8) bool {
 
 	kcl.Entries = newEntries
 
+	kcl.RecomputeHashes()
+
+	return true
+}
+
+// RecomputeHashes re-calculates all key hash entries.
+func (kcl *KeyCredentialLink) RecomputeHashes() {
 	for i := len(kcl.Entries) - 1; i > 0; i-- {
 		if kcl.Entries[i].Entry().Identifier != TypeKeyHash {
 			continue
@@ -241,8 +249,6 @@ func (kcl *KeyCredentialLink) Remove(entryType uint8) bool {
 
 		kcl.Entries[i] = NewKeyHashEntry(kcl.Entries[i+1:])
 	}
-
-	return true
 }
 
 // Bytes returns the binary representation of the KEYCREDENTIALLINK_BLOB
@@ -264,6 +270,48 @@ func (kcl *KeyCredentialLink) Bytes() []byte {
 	}
 
 	return buf.Bytes()
+}
+
+// Sort sorts the entries of the KeyCredentialLink according to the order
+// enforced for validated writes. It also re-computres hash entries based on the
+// new order.
+func (kcl *KeyCredentialLink) Sort() {
+	slices.SortStableFunc(kcl.Entries, func(a KeyCredentialLinkEntry, b KeyCredentialLinkEntry) int {
+		aOrder := a.Entry().Identifier
+		if aOrder <= 0 {
+			aOrder = math.MaxUint8
+		}
+
+		bOrder := b.Entry().Identifier
+		if bOrder <= 0 {
+			bOrder = math.MaxUint8
+		}
+
+		return int(aOrder) - int(bOrder)
+	})
+
+	kcl.RecomputeHashes()
+}
+
+// Sorted returns true if the entries of the KeyCredentialLink are sorted
+// according to the order enforced for validated writes.
+func (kcl *KeyCredentialLink) Sorted() bool {
+	last := uint8(0)
+
+	for _, e := range kcl.Entries {
+		order := e.Entry().Identifier
+		if order <= 0 {
+			order = math.MaxUint8
+		}
+
+		if order < last {
+			return false
+		}
+
+		last = order
+	}
+
+	return true
 }
 
 // Validate checks if the KeyCredentialLink contains all entries are present
@@ -414,40 +462,8 @@ func (kcl *KeyCredentialLink) CheckValidatedWriteCompatible() error {
 		}
 	}
 
-	// all entries (including optional entries) have to be in a specific order
-	order := []int{
-		kcl.Index(TypeKeyID),
-		kcl.Index(TypeKeyHash),
-		kcl.Index(TypeKeyMaterial),
-		kcl.Index(TypeKeyUsage),
-	}
-
-	keySourceIndex := kcl.Index(TypeKeySource)
-	if keySourceIndex > -1 {
-		order = append(order, keySourceIndex)
-	}
-
-	deviceIDIndex := kcl.Index(TypeDeviceId)
-	if deviceIDIndex > -1 {
-		order = append(order, deviceIDIndex)
-	}
-
-	order = append(order, kcl.Index(TypeCustomKeyInformation))
-
-	keyCreationTimeIndex := kcl.Index(TypeKeyCreationTime)
-	if keyCreationTimeIndex > -1 {
-		order = append(order, keyCreationTimeIndex)
-	}
-
-	// sanity check
-	for _, idx := range order {
-		if idx < 0 {
-			return fmt.Errorf("cannot check order with non-existing entries")
-		}
-	}
-
-	if !slices.IsSorted(order) {
-		return fmt.Errorf("invalid order of entries")
+	if !kcl.Sorted() {
+		return fmt.Errorf("entries are not in correct order")
 	}
 
 	return nil
@@ -572,6 +588,61 @@ func FormatKeyCredentials(kcls []*KeyCredentialLink, includeRaw bool, colored bo
 	}
 
 	return strings.TrimSpace(sb.String())
+}
+
+// MakeValidatedWriteCompatibleDNWithBinary is like MakeValidatedWriteCompatible
+// but it operates on DNWithBinary strings.
+func MakeValidatedWriteCompatibleDNWithBinary(original string) (string, error) {
+	kcl, err := ParseDNWithBinary(original)
+	if err != nil {
+		return "", fmt.Errorf("parse original KeyCredentialLink: %w", err)
+	}
+
+	compatible, err := MakeValidatedWriteCompatible(kcl)
+	if err != nil {
+		return "", err
+	}
+
+	return compatible.DNWithBinary(), nil
+}
+
+// MakeValidatedWriteCompatible returns a copy of the original KeyCredentialLink
+// that was modified to be compatible for validated writes.
+func MakeValidatedWriteCompatible(original *KeyCredentialLink) (*KeyCredentialLink, error) {
+	err := original.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("validate original KeyCredentialLink: %w", err)
+	}
+
+	compatible, err := ParseBlob(original.Bytes(), original.DN)
+	if err != nil {
+		return nil, fmt.Errorf("copy KeyCredentialLink: %w", err)
+	}
+
+	compatible.Remove(TypeKeyUsage)
+	compatible.Entries = append(compatible.Entries, NewKeyUsageEntry(KeyUsageNGC))
+
+	compatible.Remove(TypeCustomKeyInformation)
+	compatible.Entries = append(compatible.Entries, NewCustomKeyInformationEntry(&CustomKeyInformation{
+		Version: 1,
+		Flags:   CustomKeyInformationFlagsMFANotUsed,
+	}))
+
+	keySourceIdx := compatible.Index(TypeKeySource)
+	if keySourceIdx >= 0 {
+		compatible.Entries[keySourceIdx] = NewKeySourceEntry(KeySourceAD)
+	}
+
+	compatible.Remove(TypeKeyApproximateLastLogonTimeStamp)
+
+	compatible.Sort()
+
+	err = compatible.CheckValidatedWriteCompatibleStrict()
+	if err != nil {
+		return nil, fmt.Errorf("KeyCredentialLink is still not validated write compatible after modification (this is a bug)")
+	}
+
+	return compatible, nil
 }
 
 func joinErrorsWithComma(errs ...error) error {
