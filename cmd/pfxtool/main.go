@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -142,7 +143,7 @@ func run() error {
 		keySize          int
 		validity         time.Duration
 		keyUsage         int
-		extendedKeyUsage []int
+		extendedKeyUsage []string
 	)
 
 	createCmd := &cobra.Command{
@@ -156,9 +157,14 @@ func run() error {
 				upn = subjectCN
 			}
 
-			ekus := make([]x509.ExtKeyUsage, 0, len(extendedKeyUsage))
+			ekus := make([]asn1.ObjectIdentifier, 0, len(extendedKeyUsage))
 			for _, eku := range extendedKeyUsage {
-				ekus = append(ekus, x509.ExtKeyUsage(eku))
+				oid, err := parseOID(eku)
+				if err != nil {
+					return fmt.Errorf("parse EKU OID %q: %w", eku, err)
+				}
+
+				ekus = append(ekus, oid)
 			}
 
 			err := create(subjectCN, upn, sid, x509.KeyUsage(keyUsage), ekus, validity,
@@ -182,7 +188,7 @@ func run() error {
 	createFlags.IntVar(&keySize, "key-size", 2048, "Private key size in bits")
 	createFlags.DurationVar(&validity, "valid-for", 0, "Period for which the certificate is valid (default ~100 years)")
 	createFlags.IntVar(&keyUsage, "key-usage", int(x509.KeyUsageCertSign), "Key usage")
-	createFlags.IntSliceVar(&extendedKeyUsage, "eku", []int{int(x509.ExtKeyUsageClientAuth)}, "Extended key usage")
+	createFlags.StringSliceVar(&extendedKeyUsage, "eku", []string{"1.3.6.1.5.5.7.3.2"}, "Extended key usage `OID`s")
 
 	rootCmd.AddCommand(createCmd)
 
@@ -581,7 +587,7 @@ func inspect(pfxFile string, pfxPassword string, verbose bool) error {
 }
 
 func create(
-	subject string, upn string, sid string, keyUsage x509.KeyUsage, extendedKeyUsage []x509.ExtKeyUsage,
+	subject string, upn string, sid string, keyUsage x509.KeyUsage, extendedKeyUsage []asn1.ObjectIdentifier,
 	validity time.Duration, keySize int, outputFile string, outputPass string, force bool,
 ) error {
 	if outputFile == "" {
@@ -611,13 +617,13 @@ func create(
 	}
 
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(int64(mathrand.Intn(math.MaxInt))),
-		Issuer:       pkix.Name{CommonName: subject},
-		Subject:      pkix.Name{CommonName: subject},
-		KeyUsage:     keyUsage,
-		ExtKeyUsage:  extendedKeyUsage,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(validity),
+		SerialNumber:       big.NewInt(int64(mathrand.Intn(math.MaxInt))),
+		Issuer:             pkix.Name{CommonName: subject},
+		Subject:            pkix.Name{CommonName: subject},
+		KeyUsage:           keyUsage,
+		UnknownExtKeyUsage: extendedKeyUsage,
+		NotBefore:          time.Now(),
+		NotAfter:           time.Now().Add(validity),
 	}
 
 	if upn != "" {
@@ -943,4 +949,20 @@ func main() {
 
 		os.Exit(1)
 	}
+}
+
+func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
+	parts := strings.Split(oidStr, ".")
+	oid := make(asn1.ObjectIdentifier, 0, len(parts))
+
+	for _, part := range parts {
+		n, err := strconv.ParseUint(part, 10, 31)
+		if err != nil {
+			return nil, fmt.Errorf("invalid OID component %q: %w", part, err)
+		}
+
+		oid = append(oid, int(n))
+	}
+
+	return oid, nil
 }
